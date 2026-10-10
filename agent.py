@@ -23,7 +23,7 @@ load_dotenv()
 # ==================== CONFIGURATION ====================
 # Choose model: "ollama" (local, free) or "openai" (needs API key)
 LLM_PROVIDER = "ollama"          # change to "openai" if you want stronger model
-OLLAMA_MODEL = "llama3.2:latest" # or "qwen2.5:14b", "qwen3-vl:8b", etc. after pulling
+OLLAMA_MODEL = "qwen2.5vl:3b"    # lightweight vision model (~3.2 GB). Alternatives: moondream, llava:7b, qwen2.5vl:7b
 OPENAI_MODEL = "gpt-4o"
 
 # Safety & guidance
@@ -31,9 +31,8 @@ REQUIRE_CONFIRMATION = True     # True = assisting mode (asks before important a
 MAX_STEPS = 40
 HEADLESS = False                 # False = you can watch the browser the whole time
 
-# Vision: set False for non-vision models (llama3.2, etc.)
-# Set True only if your model supports images (e.g. qwen2.5-vl, gpt-4o)
-USE_VISION = False
+# Vision: True for vision models (qwen2.5vl, llava, moondream, etc.)
+USE_VISION = True
 
 # Browser mode:
 #   "new"           = launch a fresh browser (default, no login)
@@ -190,7 +189,7 @@ async def main():
         browser=browser,
         system_prompt=SYSTEM_PROMPT,
         max_steps=MAX_STEPS,
-        use_vision=USE_VISION,          # False for non-vision models like llama3.2
+        use_vision=USE_VISION,
         register_new_step_callback=confirmation_callback,
     )
 
