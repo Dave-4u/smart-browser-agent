@@ -35,7 +35,8 @@ If images are described, use those descriptions.`;
     options: { num_ctx: 16384 }
   };
 
-  const res = await fetch("http://127.0.0.1:11434/api/chat", {
+  // Using port 11435 to avoid conflicts with an already-running Ollama on 11434
+  const res = await fetch("http://127.0.0.1:11435/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
