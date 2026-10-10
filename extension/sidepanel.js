@@ -70,5 +70,14 @@ correctBtn.addEventListener("click", async () => {
     statusDiv.textContent = "Analyze the page first.";
     return;
   }
+
+  // Save the correction for future tasks
+  await chrome.runtime.sendMessage({
+    type: "SAVE_CORRECTION",
+    feedback,
+    prompt: lastPageData.prompt
+  });
+
   await runAnalysis(feedback);
+  statusDiv.textContent = "Correction saved and applied. It will be used on future tasks too.";
 });
