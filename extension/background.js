@@ -21,19 +21,20 @@ async function askOllama(prompt, imageDescriptions, responseImages = [], feedbac
 
 CRITICAL RULES:
 - You MUST always choose between Image 1 and Image 2.
-- You are not allowed to refuse, say "I cannot", "neither", or avoid choosing.
-- Even if the difference is small, pick one and explain why.
-- Only choose both in the rare case they are truly equal.
-- The two Response images are attached. Look at them carefully.
-- Source images are only for context.
+- You are not allowed to refuse or avoid choosing.
+- The two Response images are attached.
 - Start your answer with "Image 1" or "Image 2" (or "Both"), then explain.
-- Do not tell the user to submit.
-- If the user gives feedback or a correction, carefully reconsider and adjust your answer.`;
+- Do not tell the user to submit.`;
 
-  let userText = `PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nLook at the two attached Response images. Which is better — Image 1 or Image 2 — and why? You must choose.`;
+  let userText = `PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nLook at the two attached Response images. Which is better — Image 1 or Image 2 — and why?`;
 
   if (feedback) {
-    userText += `\n\nUSER FEEDBACK / CORRECTION:\n${feedback}\n\nPlease take another look and revise your recommendation based on this feedback.`;
+    userText = `IMPORTANT CORRECTION FROM THE USER (this overrides your previous judgment):
+${feedback}
+
+You previously chose the wrong image. Re-examine the attached Response images carefully with this correction in mind and choose the correct one.
+
+PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nBased on the correction above, which Response image is actually better — Image 1 or Image 2 — and why?`;
   }
 
   const messages = [
@@ -49,7 +50,7 @@ CRITICAL RULES:
     model,
     messages,
     stream: false,
-    options: { num_ctx: 16384, temperature: 0.2 }
+    options: { num_ctx: 16384, temperature: 0.3 }
   };
 
   const res = await fetch("http://127.0.0.1:11435/api/chat", {
