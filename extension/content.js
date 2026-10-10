@@ -1,37 +1,4 @@
-// Content script — tailored for the Mindrift / Toloka labeling page
-// Extracts the prompt and actual Response images as base64
-
-function waitForImage(img, timeout = 5000) {
-  return new Promise((resolve) => {
-    if (img.complete && img.naturalWidth > 0) {
-      resolve(true);
-      return;
-    }
-    const timer = setTimeout(() => resolve(false), timeout);
-    img.onload = () => { clearTimeout(timer); resolve(true); };
-    img.onerror = () => { clearTimeout(timer); resolve(false); };
-  });
-}
-
-// Fetch the image as a blob and convert to base64 (avoids canvas CORS issues)
-async function imageToBase64(img) {
-  try {
-    if (!img.src || img.src.startsWith("data:")) return null;
-    const res = await fetch(img.src);
-    const blob = await res.blob();
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const dataUrl = reader.result;
-        resolve(dataUrl ? dataUrl.split(",")[1] : null);
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
-  } catch (e) {
-    return null;
-  }
-}
+// Content script — extracts prompt and image URLs (background will fetch the actual images)
 
 async function extractLabelingData() {
   // Prompt
@@ -44,24 +11,16 @@ async function extractLabelingData() {
     prompt = match ? match[1].trim() : "(prompt not found)";
   }
 
-  // Source / Request images (descriptions)
+  // Source images (descriptions)
   const sourceImgs = Array.from(document.querySelectorAll('img[alt^="source_image"], img[alt="Request Image"]'))
     .filter(img => img.naturalWidth > 50);
 
-  // Response images
+  // Response images — collect their src URLs
   const img1 = document.querySelector('img[alt="image_1"]');
   const img2 = document.querySelector('img[alt="image_2"]');
   const responseImgs = [img1, img2].filter(Boolean);
 
-  for (const img of responseImgs) {
-    await waitForImage(img);
-  }
-
-  const responseBase64 = [];
-  for (const img of responseImgs) {
-    const b64 = await imageToBase64(img);
-    if (b64) responseBase64.push(b64);
-  }
+  const responseUrls = responseImgs.map(img => img.src).filter(Boolean);
 
   let imageDescriptions = "";
   if (sourceImgs.length) {
@@ -72,7 +31,7 @@ async function extractLabelingData() {
     imageDescriptions += "\n\n";
   }
 
-  imageDescriptions += "RESPONSE IMAGES (the two you must choose between — actual images are attached):\n";
+  imageDescriptions += "RESPONSE IMAGES (the two you must choose between):\n";
   imageDescriptions += responseImgs.map((img, i) =>
     `Image ${i + 1}: alt="${img.alt}" size=${img.naturalWidth}x${img.naturalHeight}`
   ).join("\n");
@@ -80,7 +39,7 @@ async function extractLabelingData() {
   return {
     prompt,
     imageDescriptions,
-    responseImages: responseBase64,
+    responseUrls,          // background will fetch these
     note: "Source images are context. You MUST choose Image 1 or Image 2."
   };
 }
