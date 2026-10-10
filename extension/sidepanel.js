@@ -15,18 +15,19 @@ analyzeBtn.addEventListener("click", async () => {
 
     const pageData = await chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_PAGE" });
 
-    // Show what was extracted so the user can verify
     extractedDiv.textContent =
       `PROMPT:\n${pageData.prompt || "(none found)"}\n\n` +
-      `RESPONSE IMAGES:\n${pageData.imageDescriptions || "(none found)"}\n\n` +
+      `${pageData.imageDescriptions || "(none found)"}\n\n` +
+      `Response images captured: ${pageData.responseImages?.length || 0}\n` +
       (pageData.note || "");
 
-    resultDiv.textContent = "Asking local model (qwen2.5vl:3b)...";
+    resultDiv.textContent = "Asking local model (qwen2.5vl:3b) with images...";
 
     const response = await chrome.runtime.sendMessage({
       type: "ASK_OLLAMA",
       prompt: pageData.prompt,
-      images: pageData.imageDescriptions
+      images: pageData.imageDescriptions,
+      responseImages: pageData.responseImages || []
     });
 
     if (!response.success) {
@@ -34,10 +35,10 @@ analyzeBtn.addEventListener("click", async () => {
     }
 
     resultDiv.textContent = response.result;
-    statusDiv.textContent = "Review the extracted info and the recommendation. You decide whether to submit.";
+    statusDiv.textContent = "Review the recommendation. You decide whether to submit.";
   } catch (err) {
     resultDiv.textContent = "Error: " + err.message;
-    statusDiv.innerHTML = '<span class="warning">Make sure Ollama is running on port 11435 and the extension is reloaded.</span>';
+    statusDiv.innerHTML = '<span class="warning">Make sure Ollama is running on port 11435 and the page is refreshed.</span>';
   } finally {
     analyzeBtn.disabled = false;
   }
