@@ -35,10 +35,10 @@ HEADLESS = False                 # False = you can watch the browser the whole t
 USE_VISION = True
 
 # Browser mode:
-#   "new"           = launch a fresh browser (no login)
-#   "system_chrome" = use your real Chrome profile (close Chrome first)
+#   "new"           = launch a fresh browser (most reliable)
+#   "system_chrome" = use your real Chrome profile (often fails on Windows)
 #   "cdp"           = connect to an already-running Chrome with remote debugging
-BROWSER_MODE = "system_chrome"   # uses your real Chrome with existing logins
+BROWSER_MODE = "new"             # reliable fresh browser; log in manually if needed
 CDP_URL = "http://localhost:9222"  # only used if BROWSER_MODE == "cdp"
 
 # Strong system prompt that enforces safety and learning
