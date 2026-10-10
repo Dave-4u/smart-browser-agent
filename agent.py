@@ -23,7 +23,7 @@ load_dotenv()
 # ==================== CONFIGURATION ====================
 # Choose model: "ollama" (local, free) or "openai" (needs API key)
 LLM_PROVIDER = "ollama"          # change to "openai" if you want stronger model
-OLLAMA_MODEL = "qwen2.5:14b"     # or "qwen3-vl:8b" for better vision, "llama3.1:8b"
+OLLAMA_MODEL = "llama3.2:latest" # or "qwen2.5:14b", "qwen3-vl:8b", etc. after pulling
 OPENAI_MODEL = "gpt-4o"
 
 # Safety & guidance
@@ -56,7 +56,7 @@ def get_llm():
         print(f"Using local Ollama model: {OLLAMA_MODEL}")
         return ChatOllama(
             model=OLLAMA_MODEL,
-            ollama_options={"num_ctx": 32000},
+            ollama_options={"num_ctx": 8192},
         )
     elif LLM_PROVIDER == "openai" and ChatOpenAI:
         print(f"Using OpenAI model: {OPENAI_MODEL}")
@@ -120,16 +120,12 @@ async def confirmation_callback(browser_state, agent_output, step_num):
             return
         elif response in ("n", "no"):
             print("Denied — agent will re-plan.\n")
-            # We can't easily inject feedback here without more hooks,
-            # but denying stops this step's execution in many versions.
-            # For stronger control we rely on the system prompt + user watching.
             return
         elif response in ("c", "correct"):
             feedback = input("What was wrong / what should it do instead?\n> ").strip()
             if feedback:
                 print(f"Noted: {feedback}")
                 print("The agent will see this in the conversation and learn from it.\n")
-                # Store feedback so we can inject it later if needed
                 if not hasattr(confirmation_callback, "corrections"):
                     confirmation_callback.corrections = []
                 confirmation_callback.corrections.append(feedback)
