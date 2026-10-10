@@ -31,6 +31,17 @@ REQUIRE_CONFIRMATION = True     # True = assisting mode (asks before important a
 MAX_STEPS = 40
 HEADLESS = False                 # False = you can watch the browser the whole time
 
+# Vision: set False for non-vision models (llama3.2, etc.)
+# Set True only if your model supports images (e.g. qwen2.5-vl, gpt-4o)
+USE_VISION = False
+
+# Browser mode:
+#   "new"           = launch a fresh browser (default, no login)
+#   "system_chrome" = use your real Chrome profile (close Chrome first)
+#   "cdp"           = connect to an already-running Chrome with remote debugging
+BROWSER_MODE = "new"             # change to "system_chrome" or "cdp"
+CDP_URL = "http://localhost:9222"  # only used if BROWSER_MODE == "cdp"
+
 # Strong system prompt that enforces safety and learning
 SYSTEM_PROMPT = """
 You are a careful, helpful human-like browser assistant that ASSISTS the user rather than acting fully autonomously.
@@ -65,8 +76,6 @@ def get_llm():
         raise ValueError("Invalid LLM_PROVIDER or missing dependencies")
 
 # ==================== HUMAN-IN-THE-LOOP CONFIRMATION ====================
-# This runs after the agent decides what to do, before (or around) execution.
-# It shows the planned actions and lets you approve, deny, or correct.
 async def confirmation_callback(browser_state, agent_output, step_num):
     if not REQUIRE_CONFIRMATION:
         return
@@ -75,13 +84,11 @@ async def confirmation_callback(browser_state, agent_output, step_num):
     print(f"STEP {step_num} — AGENT PLANNING")
     print("="*60)
 
-    # Show current page
     title = getattr(browser_state, "title", "") or ""
     url = getattr(browser_state, "url", "") or ""
     print(f"Page: {title}")
     print(f"URL:  {url}")
 
-    # Show what the agent wants to do
     actions = []
     if hasattr(agent_output, "action") and agent_output.action:
         for act in agent_output.action:
@@ -97,7 +104,6 @@ async def confirmation_callback(browser_state, agent_output, step_num):
     else:
         print("\n(No specific actions listed — check terminal logs for reasoning)")
 
-    # Show next goal if available
     next_goal = ""
     if hasattr(agent_output, "current_state") and agent_output.current_state:
         next_goal = getattr(agent_output.current_state, "next_goal", "") or ""
@@ -147,7 +153,6 @@ async def main():
         print("No task given. Exiting.")
         return
 
-    # Append guidance instruction to the task so the model knows to assist
     full_task = (
         task
         + "\n\nIMPORTANT: You are assisting the user. "
@@ -158,18 +163,26 @@ async def main():
 
     llm = get_llm()
 
-    # Reliable browser launch (especially on Windows) + headed so you can watch
-    browser = Browser(
-        headless=HEADLESS,
-        enable_default_extensions=False,
-        args=[
-            "--disable-extensions",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-popup-blocking",
-            "--disable-background-timer-throttling",
-        ],
-    )
+    # Browser setup
+    if BROWSER_MODE == "system_chrome":
+        print("Using your real Chrome profile (close Chrome completely first if it fails).")
+        browser = Browser.from_system_chrome(headless=HEADLESS)
+    elif BROWSER_MODE == "cdp":
+        print(f"Connecting to existing Chrome at {CDP_URL}")
+        browser = Browser(cdp_url=CDP_URL)
+    else:
+        print("Launching a fresh browser window.")
+        browser = Browser(
+            headless=HEADLESS,
+            enable_default_extensions=False,
+            args=[
+                "--disable-extensions",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-popup-blocking",
+                "--disable-background-timer-throttling",
+            ],
+        )
 
     agent = Agent(
         task=full_task,
@@ -177,6 +190,7 @@ async def main():
         browser=browser,
         system_prompt=SYSTEM_PROMPT,
         max_steps=MAX_STEPS,
+        use_vision=USE_VISION,          # False for non-vision models like llama3.2
         register_new_step_callback=confirmation_callback,
     )
 
