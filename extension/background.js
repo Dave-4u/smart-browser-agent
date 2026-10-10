@@ -7,7 +7,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "ASK_OLLAMA") {
-    askOllama(message.prompt, message.images, message.responseImages, message.feedback)
+    askOllama(message.prompt, message.images, message.responseUrls, message.feedback)
       .then((result) => sendResponse({ success: true, result }))
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
@@ -27,7 +27,6 @@ async function saveCorrection(feedback, prompt) {
     promptSnippet: (prompt || "").slice(0, 120),
     timestamp: Date.now()
   });
-  // Keep only the last 30 corrections
   const trimmed = corrections.slice(-30);
   await chrome.storage.local.set({ corrections: trimmed });
 }
@@ -35,13 +34,38 @@ async function saveCorrection(feedback, prompt) {
 async function getPastLessons() {
   const { corrections = [] } = await chrome.storage.local.get("corrections");
   if (!corrections.length) return "";
-  const recent = corrections.slice(-8); // last 8
+  const recent = corrections.slice(-8);
   return recent.map((c, i) => `${i + 1}. ${c.feedback}`).join("\n");
 }
 
-async function askOllama(prompt, imageDescriptions, responseImages = [], feedback = "") {
+async function urlToBase64(url) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result;
+        resolve(dataUrl ? dataUrl.split(",")[1] : null);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+async function askOllama(prompt, imageDescriptions, responseUrls = [], feedback = "") {
   const model = "qwen2.5vl:3b";
   const pastLessons = await getPastLessons();
+
+  // Fetch the actual images in the background
+  const responseImages = [];
+  for (const url of responseUrls) {
+    const b64 = await urlToBase64(url);
+    if (b64) responseImages.push(b64);
+  }
 
   let system = `You are an image preference labeling assistant.
 
