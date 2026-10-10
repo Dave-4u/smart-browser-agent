@@ -1,13 +1,13 @@
 // Background service worker
-// Handles Ollama API calls, side panel, and persistent corrections
+// Uses Gemini API for image understanding
 
 chrome.action.onClicked.addListener(async (tab) => {
   await chrome.sidePanel.open({ tabId: tab.id });
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "ASK_OLLAMA") {
-    askOllama(message.prompt, message.images, message.responseUrls, message.feedback)
+  if (message.type === "ASK_GEMINI") {
+    askGemini(message.prompt, message.images, message.responseUrls, message.feedback)
       .then((result) => sendResponse({ success: true, result }))
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
@@ -16,6 +16,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     saveCorrection(message.feedback, message.prompt)
       .then(() => sendResponse({ success: true }))
       .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+  if (message.type === "SAVE_API_KEY") {
+    chrome.storage.local.set({ geminiApiKey: message.key })
+      .then(() => sendResponse({ success: true }));
     return true;
   }
 });
@@ -56,23 +61,33 @@ async function urlToBase64(url) {
   }
 }
 
-async function askOllama(prompt, imageDescriptions, responseUrls = [], feedback = "") {
-  const model = "qwen2.5vl:3b";
+async function askGemini(prompt, imageDescriptions, responseUrls = [], feedback = "") {
+  const { geminiApiKey } = await chrome.storage.local.get("geminiApiKey");
+  if (!geminiApiKey) {
+    throw new Error("No Gemini API key saved. Paste it in the side panel first.");
+  }
+
   const pastLessons = await getPastLessons();
 
-  // Fetch the actual images in the background
-  const responseImages = [];
+  // Fetch images
+  const imageParts = [];
   for (const url of responseUrls) {
     const b64 = await urlToBase64(url);
-    if (b64) responseImages.push(b64);
+    if (b64) {
+      imageParts.push({
+        inline_data: {
+          mime_type: "image/jpeg",
+          data: b64
+        }
+      });
+    }
   }
 
   let system = `You are an image preference labeling assistant.
 
 CRITICAL RULES:
 - You MUST always choose between Image 1 and Image 2.
-- You are not allowed to refuse or avoid choosing.
-- The two Response images are attached.
+- Never refuse or say you cannot judge.
 - Start your answer with "Image 1" or "Image 2" (or "Both"), then explain.
 - Do not tell the user to submit.`;
 
@@ -80,39 +95,44 @@ CRITICAL RULES:
     system += `\n\nPAST CORRECTIONS FROM THE USER (apply these lessons):\n${pastLessons}`;
   }
 
-  let userText = `PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nLook at the two attached Response images. Which is better — Image 1 or Image 2 — and why?`;
+  let userText = `PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nThe two Response images are attached (first = Image 1, second = Image 2). Which is better and why?`;
 
   if (feedback) {
-    userText = `IMPORTANT CORRECTION FROM THE USER (this overrides your previous judgment):\n${feedback}\n\nYou previously chose the wrong image. Re-examine the attached Response images carefully with this correction in mind and choose the correct one.\n\nPROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nBased on the correction above, which Response image is actually better — Image 1 or Image 2 — and why?`;
+    userText = `IMPORTANT CORRECTION:\n${feedback}\n\nRe-examine the images and choose the correct one.\n\nPROMPT:\n${prompt}\n\n${imageDescriptions || ""}`;
   }
 
-  const messages = [
-    { role: "system", content: system },
-    {
-      role: "user",
-      content: userText,
-      images: responseImages.length ? responseImages : undefined
-    }
-  ];
+  const parts = [{ text: userText }, ...imageParts];
 
   const body = {
-    model,
-    messages,
-    stream: false,
-    options: { num_ctx: 16384, temperature: 0.3 }
+    contents: [
+      {
+        role: "user",
+        parts
+      }
+    ],
+    systemInstruction: {
+      parts: [{ text: system }]
+    },
+    generationConfig: {
+      temperature: 0.3
+    }
   };
 
-  const res = await fetch("http://127.0.0.1:11435/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }
+  );
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Ollama error ${res.status}: ${text}`);
+    throw new Error(`Gemini error ${res.status}: ${text}`);
   }
 
   const data = await res.json();
-  return data.message?.content || "No response from model.";
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  return text || "No response from Gemini.";
 }
