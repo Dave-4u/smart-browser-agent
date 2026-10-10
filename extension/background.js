@@ -7,40 +7,46 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "ASK_OLLAMA") {
-    askOllama(message.prompt, message.images)
+    askOllama(message.prompt, message.images, message.responseImages)
       .then((result) => sendResponse({ success: true, result }))
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true; // keep channel open for async
   }
 });
 
-async function askOllama(prompt, imageDescriptions) {
+async function askOllama(prompt, imageDescriptions, responseImages = []) {
   const model = "qwen2.5vl:3b";
 
   const system = `You are a careful labeling assistant for a preference task.
 
-There are two kinds of images:
-- SOURCE / REQUEST images: the original images the user provided with the prompt. Use these for context (what needs to be edited or referenced).
-- RESPONSE images: the two generated images you must choose between. They are labeled Image 1 and Image 2.
+Rules you must follow:
+- There are always exactly two Response images: Image 1 and Image 2.
+- You MUST recommend Image 1, Image 2, or (only in rare exceptional cases) both.
+- Never say "neither", "none", or refuse to choose.
+- Source/Request images are context only. The actual Response images are attached so you can see them.
+- Judge using the selection criteria: prompt compliance first (but not alone), then anatomy/scene correctness, cohesion, artifacts, and overall quality.
+- Weigh how serious and visible each problem is.
+- Explain your reasoning in plain language and clearly state your final choice.
+- Do NOT tell the user to click submit.`;
 
-Your job: recommend ONLY Image 1 or Image 2 (or both only if truly equal) as the better response to the prompt, considering the source images.
-Never mention Image 3 or any higher number.
-Explain your reasoning in plain language.
-Do NOT tell the user to click submit.`;
+  const userText = `PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nThe two Response images are attached. Which one is the better response — Image 1 or Image 2 — and why?`;
 
-  const userContent = `PROMPT:\n${prompt}\n\n${imageDescriptions || "(no image info)"}\n\nWhich Response image is better — Image 1 or Image 2 — and why?`;
+  const messages = [
+    { role: "system", content: system },
+    {
+      role: "user",
+      content: userText,
+      images: responseImages.length ? responseImages : undefined
+    }
+  ];
 
   const body = {
     model,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: userContent }
-    ],
+    messages,
     stream: false,
     options: { num_ctx: 16384 }
   };
 
-  // Using port 11435 to avoid conflicts with an already-running Ollama on 11434
   const res = await fetch("http://127.0.0.1:11435/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
