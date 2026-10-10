@@ -1,5 +1,5 @@
 // Content script — tailored for the Mindrift / Toloka labeling page
-// Extracts the prompt, source descriptions, and actual Response images as base64
+// Extracts the prompt and actual Response images as base64
 
 function waitForImage(img, timeout = 5000) {
   return new Promise((resolve) => {
@@ -8,39 +8,29 @@ function waitForImage(img, timeout = 5000) {
       return;
     }
     const timer = setTimeout(() => resolve(false), timeout);
-    img.onload = () => {
-      clearTimeout(timer);
-      resolve(true);
-    };
-    img.onerror = () => {
-      clearTimeout(timer);
-      resolve(false);
-    };
-    // Force a reload attempt if it hasn't started
-    if (!img.src) {
-      resolve(false);
-    }
+    img.onload = () => { clearTimeout(timer); resolve(true); };
+    img.onerror = () => { clearTimeout(timer); resolve(false); };
   });
 }
 
-function imageToBase64(img) {
-  return new Promise((resolve) => {
-    try {
-      if (!img.naturalWidth) {
-        resolve(null);
-        return;
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.min(img.naturalWidth, 768);
-      canvas.height = Math.min(img.naturalHeight, 768);
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-      resolve(dataUrl.split(",")[1] || null);
-    } catch (e) {
-      resolve(null);
-    }
-  });
+// Fetch the image as a blob and convert to base64 (avoids canvas CORS issues)
+async function imageToBase64(img) {
+  try {
+    if (!img.src || img.src.startsWith("data:")) return null;
+    const res = await fetch(img.src);
+    const blob = await res.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result;
+        resolve(dataUrl ? dataUrl.split(",")[1] : null);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    return null;
+  }
 }
 
 async function extractLabelingData() {
@@ -54,16 +44,15 @@ async function extractLabelingData() {
     prompt = match ? match[1].trim() : "(prompt not found)";
   }
 
-  // Source / Request images
+  // Source / Request images (descriptions)
   const sourceImgs = Array.from(document.querySelectorAll('img[alt^="source_image"], img[alt="Request Image"]'))
     .filter(img => img.naturalWidth > 50);
 
-  // Response images — wait for them to load
+  // Response images
   const img1 = document.querySelector('img[alt="image_1"]');
   const img2 = document.querySelector('img[alt="image_2"]');
   const responseImgs = [img1, img2].filter(Boolean);
 
-  // Wait for both to have real dimensions
   for (const img of responseImgs) {
     await waitForImage(img);
   }
