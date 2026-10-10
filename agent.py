@@ -55,7 +55,10 @@ TASK STYLE:
 def get_llm():
     if LLM_PROVIDER == "ollama":
         print(f"Using local Ollama model: {OLLAMA_MODEL}")
-        return ChatOllama(model=OLLAMA_MODEL, num_ctx=32000)
+        return ChatOllama(
+            model=OLLAMA_MODEL,
+            ollama_options={"num_ctx": 32000},
+        )
     elif LLM_PROVIDER == "openai" and ChatOpenAI:
         print(f"Using OpenAI model: {OPENAI_MODEL}")
         return ChatOpenAI(model=OPENAI_MODEL, temperature=0.1)
