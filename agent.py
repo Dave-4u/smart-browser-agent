@@ -66,7 +66,7 @@ def get_llm():
         print(f"Using local Ollama model: {OLLAMA_MODEL}")
         return ChatOllama(
             model=OLLAMA_MODEL,
-            ollama_options={"num_ctx": 8192},
+            ollama_options={"num_ctx": 16384},   # larger context for pages + screenshots
         )
     elif LLM_PROVIDER == "openai" and ChatOpenAI:
         print(f"Using OpenAI model: {OPENAI_MODEL}")
