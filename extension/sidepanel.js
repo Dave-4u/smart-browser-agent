@@ -18,7 +18,7 @@ async function runAnalysis(feedback = "") {
       type: "ASK_OLLAMA",
       prompt: lastPageData.prompt,
       images: lastPageData.imageDescriptions,
-      responseImages: lastPageData.responseImages || [],
+      responseUrls: lastPageData.responseUrls || [],
       feedback
     });
 
@@ -51,7 +51,7 @@ analyzeBtn.addEventListener("click", async () => {
     extractedDiv.textContent =
       `PROMPT:\n${lastPageData.prompt || "(none found)"}\n\n` +
       `${lastPageData.imageDescriptions || "(none found)"}\n\n` +
-      `Response images captured: ${lastPageData.responseImages?.length || 0}\n` +
+      `Response image URLs found: ${lastPageData.responseUrls?.length || 0}\n` +
       (lastPageData.note || "");
 
     await runAnalysis();
@@ -71,7 +71,6 @@ correctBtn.addEventListener("click", async () => {
     return;
   }
 
-  // Save the correction for future tasks
   await chrome.runtime.sendMessage({
     type: "SAVE_CORRECTION",
     feedback,
