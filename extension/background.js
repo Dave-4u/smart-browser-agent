@@ -17,19 +17,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function askOllama(prompt, imageDescriptions, responseImages = []) {
   const model = "qwen2.5vl:3b";
 
-  const system = `You are a careful labeling assistant for a preference task.
+  const system = `You are an image preference labeling assistant.
 
-Rules you must follow:
-- There are always exactly two Response images: Image 1 and Image 2.
-- You MUST recommend Image 1, Image 2, or (only in rare exceptional cases) both.
-- Never say "neither", "none", or refuse to choose.
-- Source/Request images are context only. The actual Response images are attached so you can see them.
-- Judge using the selection criteria: prompt compliance first (but not alone), then anatomy/scene correctness, cohesion, artifacts, and overall quality.
-- Weigh how serious and visible each problem is.
-- Explain your reasoning in plain language and clearly state your final choice.
-- Do NOT tell the user to click submit.`;
+CRITICAL RULES:
+- You MUST always choose between Image 1 and Image 2.
+- You are not allowed to refuse, say "I cannot", "neither", "I will not provide a judgment", or anything similar.
+- Even if the images look similar or the difference is small, you must pick one and explain why.
+- Only choose both in the rare case that they are truly equal in every way.
+- The two Response images are attached. Look at them carefully.
+- Source images are only for context.
+- Start your answer with "Image 1" or "Image 2" (or "Both"), then explain.
+- Do not tell the user to submit.`;
 
-  const userText = `PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nThe two Response images are attached. Which one is the better response — Image 1 or Image 2 — and why?`;
+  const userText = `PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nLook at the two attached Response images. Which is better — Image 1 or Image 2 — and why? You must choose.`;
 
   const messages = [
     { role: "system", content: system },
@@ -44,7 +44,7 @@ Rules you must follow:
     model,
     messages,
     stream: false,
-    options: { num_ctx: 16384 }
+    options: { num_ctx: 16384, temperature: 0.2 }
   };
 
   const res = await fetch("http://127.0.0.1:11435/api/chat", {
