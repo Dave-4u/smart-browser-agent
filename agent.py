@@ -100,10 +100,17 @@ async def main():
 
     llm = get_llm()
 
-    # Dedicated browser profile for safety
+    # More reliable browser launch (especially on Windows)
     browser = Browser(
         headless=HEADLESS,
-        # You can add more restrictions here if needed
+        enable_default_extensions=False,   # Avoids extension download delays that cause timeouts
+        args=[
+            "--disable-extensions",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-popup-blocking",
+            "--disable-background-timer-throttling",
+        ],
     )
 
     agent = Agent(
