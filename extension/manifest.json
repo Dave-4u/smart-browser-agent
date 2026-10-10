@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Smart Labeling Assistant",
-  "version": "1.0.0",
-  "description": "Assists with preference labeling tasks using a local Ollama model. Extracts the prompt and images, recommends the better option, and waits for your confirmation.",
+  "version": "1.1.0",
+  "description": "Assists with preference labeling tasks using free Gemini API. Extracts the prompt and images, recommends the better option.",
   "permissions": [
     "sidePanel",
     "activeTab",
@@ -11,9 +11,7 @@
   ],
   "host_permissions": [
     "<all_urls>",
-    "http://localhost:11434/*",
-    "http://127.0.0.1:11434/*",
-    "http://127.0.0.1:11435/*"
+    "https://generativelanguage.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js"
