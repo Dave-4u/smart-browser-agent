@@ -1,5 +1,6 @@
 // Background service worker
 // Uses Gemini API for image understanding
+// Tuned with Toloka / Mindrift style labeling criteria
 
 chrome.action.onClicked.addListener(async (tab) => {
   await chrome.sidePanel.open({ tabId: tab.id });
@@ -61,6 +62,28 @@ async function urlToBase64(url) {
   }
 }
 
+const TOLOKA_CRITERIA = `
+You are a trained Toloka/Mindrift image preference labeler.
+
+Your task is to choose which of the two generated Response images is a better response to the user's request.
+
+SELECTION CRITERIA (weigh all of them, not just the first):
+1. Prompt Compliance — Does the image actually do what was asked? Check this first, but never decide on it alone. For local edits, only the requested part should change (heatmap should be mostly black outside the edit). For global edits (restyle, change season, new angle, etc.), a fully lit heatmap is normal and not a flaw.
+2. Anatomical and Scene Correctness — No extra limbs, broken perspective, melted text, wrong object structure, unless the prompt explicitly asks for it. Serious anatomy errors usually beat minor prompt misses.
+3. Image Cohesion — Nothing should look pasted on. The image should feel like one coherent whole.
+4. Absence of Artifacts — Prefer images without watermarks, signatures, unwanted frames, or blob backgrounds unless requested.
+5. Overall Quality & Style Match — For new images, prefer higher quality. For edits, prefer the one that better matches the style, lighting, and color of the source images.
+
+HOW TO WEIGH:
+- A perfect prompt match does not save a broken image (e.g. three legs).
+- A flawless image that ignores the main request is not a good answer.
+- Trust what an ordinary viewer would notice first.
+- Only choose both if they are truly equal after careful inspection.
+
+ALWAYS start your answer with "Image 1" or "Image 2" (or "Both"), then explain in plain language.
+Do not refuse to choose. Do not tell the user to submit.
+`;
+
 async function askGemini(prompt, imageDescriptions, responseUrls = [], feedback = "") {
   const { geminiApiKey } = await chrome.storage.local.get("geminiApiKey");
   if (!geminiApiKey) {
@@ -69,7 +92,6 @@ async function askGemini(prompt, imageDescriptions, responseUrls = [], feedback 
 
   const pastLessons = await getPastLessons();
 
-  // Fetch images
   const imageParts = [];
   for (const url of responseUrls) {
     const b64 = await urlToBase64(url);
@@ -83,22 +105,16 @@ async function askGemini(prompt, imageDescriptions, responseUrls = [], feedback 
     }
   }
 
-  let system = `You are an image preference labeling assistant.
-
-CRITICAL RULES:
-- You MUST always choose between Image 1 and Image 2.
-- Never refuse or say you cannot judge.
-- Start your answer with "Image 1" or "Image 2" (or "Both"), then explain.
-- Do not tell the user to submit.`;
+  let system = TOLOKA_CRITERIA;
 
   if (pastLessons) {
     system += `\n\nPAST CORRECTIONS FROM THE USER (apply these lessons):\n${pastLessons}`;
   }
 
-  let userText = `PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nThe two Response images are attached (first = Image 1, second = Image 2). Which is better and why?`;
+  let userText = `PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nThe two Response images are attached (first = Image 1, second = Image 2). Which is the better response and why?`;
 
   if (feedback) {
-    userText = `IMPORTANT CORRECTION:\n${feedback}\n\nRe-examine the images and choose the correct one.\n\nPROMPT:\n${prompt}\n\n${imageDescriptions || ""}`;
+    userText = `IMPORTANT CORRECTION FROM THE USER:\n${feedback}\n\nRe-examine the images carefully with this correction and the Toloka criteria in mind.\n\nPROMPT:\n${prompt}\n\n${imageDescriptions || ""}`;
   }
 
   const parts = [{ text: userText }, ...imageParts];
@@ -118,7 +134,6 @@ CRITICAL RULES:
     }
   };
 
-  // Using gemini-3.5-flash-lite (recommended for new users)
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${geminiApiKey}`,
     {
