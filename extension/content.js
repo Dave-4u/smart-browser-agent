@@ -1,44 +1,77 @@
 // Content script — runs on labeling pages
-// Extracts the user prompt and image options
+// Extracts the user prompt and the two Response images only
 
 function extractLabelingData() {
-  // Common patterns for Mindrift / Toloka / preference labeling pages
-  // Adjust selectors if the page structure differs
-
   let prompt = "";
-  // Try common prompt containers
+
+  // Try to find the Prompt block
   const promptSelectors = [
     "[class*=\"prompt\"]",
-    "[class*=\"instruction\"]",
-    "[class*=\"request\"]",
+    "[class*=\"Prompt\"]",
     "[data-testid*=\"prompt\"]",
-    "h1", "h2", "h3",
-    ".task-description",
-    "p"
+    ".prompt",
+    "#prompt"
   ];
-
   for (const sel of promptSelectors) {
     const el = document.querySelector(sel);
-    if (el && el.innerText && el.innerText.length > 20) {
+    if (el && el.innerText && el.innerText.trim().length > 10) {
       prompt = el.innerText.trim();
       break;
     }
   }
 
-  // Fallback: grab a reasonable chunk of visible text
+  // Fallback: look for text that looks like the instruction
   if (!prompt) {
-    prompt = document.body.innerText.slice(0, 1500);
+    const allText = document.body.innerText;
+    const match = allText.match(/(?:prompt|request|instruction)[:\s]*([\s\S]{20,500})/i);
+    prompt = match ? match[1].trim() : allText.slice(0, 800);
   }
 
-  // Extract image sources / alt texts
-  const images = Array.from(document.querySelectorAll("img"))
-    .filter(img => img.src && !img.src.includes("icon") && !img.src.includes("logo"))
-    .slice(0, 6)
-    .map((img, i) => `Image ${i + 1}: alt="${img.alt || ""}" src=${img.src.slice(0, 80)}...`);
+  // Focus on Response / generated images only
+  // Common patterns: Response block, generated images, Image 1 / Image 2
+  let responseImages = [];
 
-  const imageDescriptions = images.join("\n") || "(images present on page — examine them)";
+  // Strategy 1: look for a Response section and take images inside it
+  const responseSelectors = [
+    "[class*=\"response\"]",
+    "[class*=\"Response\"]",
+    "[class*=\"generated\"]",
+    "[data-testid*=\"response\"]",
+    ".response",
+    "#response"
+  ];
 
-  return { prompt, imageDescriptions };
+  for (const sel of responseSelectors) {
+    const container = document.querySelector(sel);
+    if (container) {
+      responseImages = Array.from(container.querySelectorAll("img"))
+        .filter(img => img.src && img.naturalWidth > 50);
+      if (responseImages.length >= 2) break;
+    }
+  }
+
+  // Strategy 2: if we didn't find a clear Response block, take the last two large images
+  if (responseImages.length < 2) {
+    const allImgs = Array.from(document.querySelectorAll("img"))
+      .filter(img => img.src && img.naturalWidth > 100 && !img.src.includes("icon") && !img.src.includes("logo"));
+    // Prefer the last two (often the generated ones)
+    responseImages = allImgs.slice(-2);
+  }
+
+  // Limit to exactly two
+  responseImages = responseImages.slice(0, 2);
+
+  const imageDescriptions = responseImages.length
+    ? responseImages.map((img, i) =>
+        `Image ${i + 1} (Response): alt="${img.alt || ""}" size=${img.naturalWidth}x${img.naturalHeight}`
+      ).join("\n")
+    : "(Could not clearly identify the two Response images. There should be exactly two generated images to choose between.)";
+
+  return {
+    prompt,
+    imageDescriptions,
+    note: "Only choose between Image 1 and Image 2 from the Response block. Ignore source/request images."
+  };
 }
 
 // Listen for requests from the side panel
