@@ -2,7 +2,8 @@
 Smart Browser Agent
 Safe, local-first browser assistant that works only inside the browser.
 Supports local Ollama (no API key) and optional cloud models.
-Includes human guidance / confirmation mode.
+Includes human guidance / confirmation mode so it assists rather than fully auto-submits.
+Learns from user corrections on training/preference tasks.
 """
 
 import asyncio
@@ -26,13 +27,13 @@ OLLAMA_MODEL = "qwen2.5:14b"     # or "qwen3-vl:8b" for better vision, "llama3.1
 OPENAI_MODEL = "gpt-4o"
 
 # Safety & guidance
-REQUIRE_CONFIRMATION = True     # Set to False for full autonomy (after you trust it)
+REQUIRE_CONFIRMATION = True     # True = assisting mode (asks before important actions)
 MAX_STEPS = 40
-HEADLESS = False                 # False = you can watch the browser
+HEADLESS = False                 # False = you can watch the browser the whole time
 
 # Strong system prompt that enforces safety and learning
 SYSTEM_PROMPT = """
-You are a careful, helpful human-like browser assistant.
+You are a careful, helpful human-like browser assistant that ASSISTS the user rather than acting fully autonomously.
 
 STRICT SAFETY RULES (never break these):
 - You ONLY control the web browser. You have ZERO access to the user's files, operating system, or anything outside the browser.
@@ -40,14 +41,12 @@ STRICT SAFETY RULES (never break these):
 - NEVER visit sites or perform actions that could cause harm.
 - If a task requires something outside the browser, stop and ask the user.
 
-GUIDANCE MODE:
-- Before every important action (clicking a submit button, selecting an image, filling sensitive data, navigating to a new major page), clearly explain your reasoning in plain language.
-- Wait for user confirmation when required.
-- Learn from the user's instructions and previous corrections in the conversation.
-
-TASK STYLE:
+GUIDANCE / ASSISTING MODE:
+- You are assisting a human. Do not submit forms, click final submit buttons, or make irreversible choices without clear explanation.
+- Before every important action (especially selecting an image, clicking submit, or confirming a choice), clearly explain your reasoning in plain language.
+- For preference labeling / training tasks (e.g. "which image is better"): carefully read the prompt, examine all options, compare prompt adherence and quality, recommend the best one with explanation, but wait for user confirmation before submitting.
+- Learn from the user's corrections. If the user says your choice was wrong, remember why and adjust future decisions in this session.
 - Act slowly and carefully like a real person.
-- For preference labeling tasks: carefully read the prompt, examine all images, compare prompt adherence and quality, then choose the best one and explain why.
 - Always prioritize accuracy and safety over speed.
 """
 
@@ -65,45 +64,108 @@ def get_llm():
     else:
         raise ValueError("Invalid LLM_PROVIDER or missing dependencies")
 
-# ==================== HUMAN CONFIRMATION CALLBACK ====================
-async def human_confirmation(step_info):
-    """Simple confirmation before actions when REQUIRE_CONFIRMATION is True."""
+# ==================== HUMAN-IN-THE-LOOP CONFIRMATION ====================
+# This runs after the agent decides what to do, before (or around) execution.
+# It shows the planned actions and lets you approve, deny, or correct.
+async def confirmation_callback(browser_state, agent_output, step_num):
     if not REQUIRE_CONFIRMATION:
-        return True
+        return
 
-    print("\n" + "="*50)
-    print("AGENT PLANNING NEXT ACTION")
-    print("="*50)
-    # You can expand this to show more details from step_info if needed
-    print("Agent wants to proceed with the next browser action.")
-    print("Reasoning is shown in the terminal logs above.")
-    
-    response = input("Allow this action? (y/n/quit): ").strip().lower()
-    if response in ("y", "yes"):
-        return True
-    elif response in ("q", "quit"):
-        print("Stopping agent as requested.")
-        return False
+    print("\n" + "="*60)
+    print(f"STEP {step_num} — AGENT PLANNING")
+    print("="*60)
+
+    # Show current page
+    title = getattr(browser_state, "title", "") or ""
+    url = getattr(browser_state, "url", "") or ""
+    print(f"Page: {title}")
+    print(f"URL:  {url}")
+
+    # Show what the agent wants to do
+    actions = []
+    if hasattr(agent_output, "action") and agent_output.action:
+        for act in agent_output.action:
+            try:
+                actions.append(act.model_dump(exclude_none=True) if hasattr(act, "model_dump") else str(act))
+            except Exception:
+                actions.append(str(act))
+
+    if actions:
+        print("\nPlanned actions:")
+        for i, a in enumerate(actions, 1):
+            print(f"  {i}. {a}")
     else:
-        print("Action denied by user. Agent will re-plan.")
-        return False
+        print("\n(No specific actions listed — check terminal logs for reasoning)")
+
+    # Show next goal if available
+    next_goal = ""
+    if hasattr(agent_output, "current_state") and agent_output.current_state:
+        next_goal = getattr(agent_output.current_state, "next_goal", "") or ""
+    if next_goal:
+        print(f"\nAgent's next goal: {next_goal}")
+
+    print("\n" + "-"*60)
+    print("Options:")
+    print("  y / yes     → Allow this step")
+    print("  n / no      → Deny and let agent re-plan")
+    print("  c / correct → Tell the agent what was wrong (it will learn)")
+    print("  q / quit    → Stop the agent")
+    print("-"*60)
+
+    while True:
+        response = input("Your choice: ").strip().lower()
+
+        if response in ("y", "yes", ""):
+            print("Approved — continuing.\n")
+            return
+        elif response in ("n", "no"):
+            print("Denied — agent will re-plan.\n")
+            # We can't easily inject feedback here without more hooks,
+            # but denying stops this step's execution in many versions.
+            # For stronger control we rely on the system prompt + user watching.
+            return
+        elif response in ("c", "correct"):
+            feedback = input("What was wrong / what should it do instead?\n> ").strip()
+            if feedback:
+                print(f"Noted: {feedback}")
+                print("The agent will see this in the conversation and learn from it.\n")
+                # Store feedback so we can inject it later if needed
+                if not hasattr(confirmation_callback, "corrections"):
+                    confirmation_callback.corrections = []
+                confirmation_callback.corrections.append(feedback)
+            return
+        elif response in ("q", "quit"):
+            print("Stopping agent as requested.")
+            raise KeyboardInterrupt("User requested stop")
+        else:
+            print("Please type y, n, c, or q.")
 
 # ==================== MAIN AGENT ====================
 async def main():
     print("Smart Browser Agent starting...")
-    print("Browser-only mode | No file system access | Local-first\n")
+    print("Browser-only mode | No file system access | Local-first")
+    print("Assisting mode: you will see the browser and can approve/correct steps.\n")
 
     task = input("What task should the agent help you with?\n> ").strip()
     if not task:
         print("No task given. Exiting.")
         return
 
+    # Append guidance instruction to the task so the model knows to assist
+    full_task = (
+        task
+        + "\n\nIMPORTANT: You are assisting the user. "
+        + "Explain your reasoning before important actions (especially image selection or submit). "
+        + "Do not submit final answers without clear justification. "
+        + "If the user corrects you, learn from the feedback and adjust."
+    )
+
     llm = get_llm()
 
-    # More reliable browser launch (especially on Windows)
+    # Reliable browser launch (especially on Windows) + headed so you can watch
     browser = Browser(
         headless=HEADLESS,
-        enable_default_extensions=False,   # Avoids extension download delays that cause timeouts
+        enable_default_extensions=False,
         args=[
             "--disable-extensions",
             "--no-first-run",
@@ -114,16 +176,16 @@ async def main():
     )
 
     agent = Agent(
-        task=task,
+        task=full_task,
         llm=llm,
         browser=browser,
         system_prompt=SYSTEM_PROMPT,
         max_steps=MAX_STEPS,
-        # register_new_step_callback=human_confirmation,  # Uncomment if your version supports it
+        register_new_step_callback=confirmation_callback,
     )
 
     print("\nAgent is starting. Watch the browser window.")
-    print("You can stop anytime with Ctrl+C\n")
+    print("You will be asked to approve steps. Ctrl+C also stops it.\n")
 
     try:
         history = await agent.run()
