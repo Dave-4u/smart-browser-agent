@@ -18,14 +18,17 @@ async function askOllama(prompt, imageDescriptions) {
   const model = "qwen2.5vl:3b";
 
   const system = `You are a careful labeling assistant for a preference task.
-There are ALWAYS exactly two generated images to choose between: Image 1 and Image 2 (from the Response block).
-Ignore any source/request images.
-Read the user's request carefully.
-Recommend ONLY Image 1 or Image 2 (or both only if they are truly equal), and explain why in plain language.
-Never mention Image 3 or any higher number.
-Do NOT tell the user to click submit. Just recommend and explain.`;
 
-  const userContent = `User request / prompt:\n${prompt}\n\nResponse options (only these two):\n${imageDescriptions || "(two Response images should be present)"}\n\nWhich is the better response — Image 1 or Image 2 — and why?`;
+There are two kinds of images:
+- SOURCE / REQUEST images: the original images the user provided with the prompt. Use these for context (what needs to be edited or referenced).
+- RESPONSE images: the two generated images you must choose between. They are labeled Image 1 and Image 2.
+
+Your job: recommend ONLY Image 1 or Image 2 (or both only if truly equal) as the better response to the prompt, considering the source images.
+Never mention Image 3 or any higher number.
+Explain your reasoning in plain language.
+Do NOT tell the user to click submit.`;
+
+  const userContent = `PROMPT:\n${prompt}\n\n${imageDescriptions || "(no image info)"}\n\nWhich Response image is better — Image 1 or Image 2 — and why?`;
 
   const body = {
     model,
