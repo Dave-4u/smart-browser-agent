@@ -1,0 +1,18 @@
+# Example Tasks for Smart Browser Agent
+
+Copy any of these into the agent when it asks for a task.
+
+## Preference Labeling / Image Selection
+Go to the preference labeling platform, carefully read the prompt for each task, examine all the images, and select the one that best matches the prompt in terms of accuracy, quality, and style. Explain your choice briefly before clicking.
+
+## Research
+Research the top 5 best budget smartphones in 2026 under $400. Compare their key specs, prices, and reviews, then give me a clear summary with pros and cons of the top 3.
+
+## Data Extraction
+Go to Hacker News, extract the titles and links of the top 10 stories right now, and present them in a clean list.
+
+## Form Filling (safe)
+Open the contact form on example.com and fill it with these details: Name = Test User, Email = test@example.com, Message = Hello from the smart agent. Do not submit unless I confirm.
+
+## Shopping Research
+Search for the best wireless headphones under $150 on Amazon, look at ratings and key features, and recommend the top 2 options with reasons.

@@ -1,0 +1,8 @@
+browser-use>=0.13.0
+playwright
+python-dotenv
+langchain-ollama
+# Optional for better models (uncomment if you have API keys):
+# langchain-openai
+# langchain-anthropic
+# langchain-google-genai
