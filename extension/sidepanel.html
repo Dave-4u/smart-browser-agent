@@ -25,24 +25,32 @@
     }
     button:hover { background: #1d4ed8; }
     button:disabled { background: #444; cursor: not-allowed; }
-    #result {
+    #extracted, #result {
       background: #1e1e1e;
       border-radius: 8px;
       padding: 12px;
       margin-top: 12px;
       white-space: pre-wrap;
       line-height: 1.5;
-      min-height: 80px;
+      font-size: 13px;
     }
+    #extracted { border-left: 3px solid #555; }
     .status { color: #888; font-size: 12px; margin-top: 8px; }
     .warning { color: #fbbf24; }
+    .label { color: #888; font-size: 11px; text-transform: uppercase; margin-bottom: 4px; }
   </style>
 </head>
 <body>
   <h2>Smart Labeling Assistant</h2>
-  <p>Works on the current page. Extracts the prompt and options, then asks your local model.</p>
+  <p>Works on the current page. Extracts the prompt and Response images, then asks your local model.</p>
   <button id="analyze">Analyze this page</button>
-  <div id="result">Click the button to get a recommendation.</div>
+
+  <div class="label">Extracted (verify this is correct)</div>
+  <div id="extracted">Click the button to extract.</div>
+
+  <div class="label">Recommendation</div>
+  <div id="result">Waiting...</div>
+
   <div class="status" id="status"></div>
   <script src="sidepanel.js"></script>
 </body>
