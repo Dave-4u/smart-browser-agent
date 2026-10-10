@@ -10,19 +10,20 @@ Runs inside the page you are already logged into. Extracts the labeling prompt a
 
 ## One-time setup
 
-### 1. Allow the extension to talk to Ollama
-
-Ollama blocks browser extensions by default. Start it with CORS allowed:
-
-**PowerShell (Windows):**
-```powershell
-$env:OLLAMA_ORIGINS="chrome-extension://*,http://localhost:*,http://127.0.0.1:*"
-ollama serve
-```
+### 1. Start Ollama on port 11435 (avoids conflicts with an already-running instance)
 
 **Command Prompt:**
 ```cmd
-set OLLAMA_ORIGINS=chrome-extension://*,http://localhost:*,http://127.0.0.1:* && ollama serve
+set OLLAMA_ORIGINS=chrome-extension://*,http://localhost:*,http://127.0.0.1:*
+set OLLAMA_HOST=127.0.0.1:11435
+ollama serve
+```
+
+**PowerShell:**
+```powershell
+$env:OLLAMA_ORIGINS="chrome-extension://*,http://localhost:*,http://127.0.0.1:*"
+$env:OLLAMA_HOST="127.0.0.1:11435"
+ollama serve
 ```
 
 Leave that terminal open while you use the extension.
