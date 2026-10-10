@@ -17,13 +17,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function askOllama(prompt, imageDescriptions) {
   const model = "qwen2.5vl:3b";
 
-  const system = `You are a careful labeling assistant. The user is doing a preference labeling task.
-Read the user's request carefully and compare the options.
-Recommend which image/option is the better response and explain why in plain language.
-Do NOT tell the user to click submit. Just recommend and explain.
-If images are described, use those descriptions.`;
+  const system = `You are a careful labeling assistant for a preference task.
+There are ALWAYS exactly two generated images to choose between: Image 1 and Image 2 (from the Response block).
+Ignore any source/request images.
+Read the user's request carefully.
+Recommend ONLY Image 1 or Image 2 (or both only if they are truly equal), and explain why in plain language.
+Never mention Image 3 or any higher number.
+Do NOT tell the user to click submit. Just recommend and explain.`;
 
-  const userContent = `User request / prompt:\n${prompt}\n\nOptions / images:\n${imageDescriptions || "(no image descriptions extracted — look at the page visually if needed)"}\n\nWhich option is the better response and why?`;
+  const userContent = `User request / prompt:\n${prompt}\n\nResponse options (only these two):\n${imageDescriptions || "(two Response images should be present)"}\n\nWhich is the better response — Image 1 or Image 2 — and why?`;
 
   const body = {
     model,
