@@ -4,18 +4,39 @@ const feedbackBox = document.getElementById("feedback");
 const extractedDiv = document.getElementById("extracted");
 const resultDiv = document.getElementById("result");
 const statusDiv = document.getElementById("status");
+const apiKeyInput = document.getElementById("apiKey");
+const saveKeyBtn = document.getElementById("saveKey");
+const keyStatus = document.getElementById("keyStatus");
 
 let lastPageData = null;
+
+// Load saved key on open
+chrome.storage.local.get("geminiApiKey").then(({ geminiApiKey }) => {
+  if (geminiApiKey) {
+    apiKeyInput.value = geminiApiKey;
+    keyStatus.textContent = "Key loaded.";
+  }
+});
+
+saveKeyBtn.addEventListener("click", async () => {
+  const key = apiKeyInput.value.trim();
+  if (!key) {
+    keyStatus.textContent = "Paste a key first.";
+    return;
+  }
+  await chrome.runtime.sendMessage({ type: "SAVE_API_KEY", key });
+  keyStatus.textContent = "Key saved.";
+});
 
 async function runAnalysis(feedback = "") {
   analyzeBtn.disabled = true;
   correctBtn.disabled = true;
-  resultDiv.textContent = feedback ? "Re-evaluating with your feedback..." : "Asking local model...";
+  resultDiv.textContent = feedback ? "Re-evaluating with your feedback..." : "Asking Gemini...";
   statusDiv.textContent = "";
 
   try {
     const response = await chrome.runtime.sendMessage({
-      type: "ASK_OLLAMA",
+      type: "ASK_GEMINI",
       prompt: lastPageData.prompt,
       images: lastPageData.imageDescriptions,
       responseUrls: lastPageData.responseUrls || [],
@@ -30,7 +51,7 @@ async function runAnalysis(feedback = "") {
     statusDiv.textContent = "Review the recommendation. You decide whether to submit.";
   } catch (err) {
     resultDiv.textContent = "Error: " + err.message;
-    statusDiv.innerHTML = '<span class="warning">Make sure Ollama is running on port 11435 and the page is refreshed.</span>';
+    statusDiv.innerHTML = '<span class="warning">Check your API key and internet connection.</span>';
   } finally {
     analyzeBtn.disabled = false;
     correctBtn.disabled = false;
