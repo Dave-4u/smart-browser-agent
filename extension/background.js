@@ -118,9 +118,9 @@ CRITICAL RULES:
     }
   };
 
-  // Using gemini-2.5-flash-lite for better free-tier availability
+  // Using gemini-3.5-flash-lite (recommended for new users)
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${geminiApiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${geminiApiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
