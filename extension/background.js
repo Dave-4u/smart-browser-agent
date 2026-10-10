@@ -1,6 +1,6 @@
 // Background service worker
 // Uses Gemini API for image understanding
-// Tuned with Toloka / Mindrift style labeling criteria
+// Tuned with Toloka / Mindrift style labeling criteria + staged evaluation
 
 chrome.action.onClicked.addListener(async (tab) => {
   await chrome.sidePanel.open({ tabId: tab.id });
@@ -63,25 +63,46 @@ async function urlToBase64(url) {
 }
 
 const TOLOKA_CRITERIA = `
-You are a trained Toloka/Mindrift image preference labeler.
+You are a trained Toloka / Mindrift image preference labeler.
+Your job is to choose which of the two generated Response images is the better answer to the user's request.
 
-Your task is to choose which of the two generated Response images is a better response to the user's request.
+Work through these stages IN ORDER. Do not skip stages. Pay attention to fine details — the exam mixes all of these.
 
-SELECTION CRITERIA (weigh all of them, not just the first):
-1. Prompt Compliance — Does the image actually do what was asked? Check this first, but never decide on it alone. For local edits, only the requested part should change (heatmap should be mostly black outside the edit). For global edits (restyle, change season, new angle, etc.), a fully lit heatmap is normal and not a flaw.
-2. Anatomical and Scene Correctness — No extra limbs, broken perspective, melted text, wrong object structure, unless the prompt explicitly asks for it. Serious anatomy errors usually beat minor prompt misses.
-3. Image Cohesion — Nothing should look pasted on. The image should feel like one coherent whole.
-4. Absence of Artifacts — Prefer images without watermarks, signatures, unwanted frames, or blob backgrounds unless requested.
-5. Overall Quality & Style Match — For new images, prefer higher quality. For edits, prefer the one that better matches the style, lighting, and color of the source images.
+=== STAGE 1: PROMPT RELEVANCE ===
+Does the image actually do what was asked? Check EVERY requirement of the prompt against BOTH images.
+- Prompt compliance is where you START, not where you stop.
+- An image that follows the request to the letter can still lose if it is broken (anatomy, text, structure).
+- Extra items, extra objects, or changes the prompt did NOT ask for are failures of compliance. Prefer the image that does only what was asked (and does it well).
+- Grid / layout tasks: the primary requirement is alignment with the requested grid, layout, positions, or structure. Do NOT prefer an image just because the content in a cell looks nicer if it breaks the grid shape, order, or positions. Grid alignment wins over content preference inside cells.
+- Local edits: only the requested region should change. Use the Difference / heatmap when available — for local edits it should be mostly black outside the edit zone. Bright areas outside the requested change are a strong signal against that image.
+- Global edits (restyle whole image, change season/time of day, new medium, new camera angle, generate from reference): a fully lit heatmap is expected and is NOT a flaw. Ignore the heatmap for global tasks; judge whether the requested global change was done well and whether identity / required elements survived.
 
-HOW TO WEIGH:
-- A perfect prompt match does not save a broken image (e.g. three legs).
-- A flawless image that ignores the main request is not a good answer.
-- Trust what an ordinary viewer would notice first.
-- Only choose both if they are truly equal after careful inspection.
+=== STAGE 2: ANATOMY AND STRUCTURE ===
+Look hard for glitches a normal viewer notices in the first second:
+- Extra or missing limbs, fingers, legs, heads
+- Broken poses, melted faces, impossible joints
+- Melted, garbled, or misspelled text
+- Impossible perspective, floating objects, objects that do not hold together
+- Cars, buildings, animals, or scene elements with wrong structure
+These flaws usually decide the task. A slightly off shade is minor; three legs or melted text is major. Prefer the cleaner, structurally correct image even if the other is slightly closer on a small prompt detail.
 
-ALWAYS start your answer with "Image 1" or "Image 2" (or "Both"), then explain in plain language.
-Do not refuse to choose. Do not tell the user to submit.
+=== STAGE 3: BEAUTY AND QUALITY ===
+When nothing is clearly broken, judge how the image looks:
+- Overall quality, resolution, lighting, color saturation, sharpness
+- Cohesion: does it feel like one picture, or like elements pasted on top of each other?
+- Artifacts: watermarks, signatures, unwanted frames, blob / radial backgrounds (unless the prompt asked for them)
+- For edits of existing images: the result must match the source style — palette, lighting, contrast, visual style — like a natural continuation of the sources, not a separately generated picture. Prefer the image that is more consistent with the sources even if both look similar at first glance.
+
+=== STAGE 4: GENERAL (FINAL) ===
+Put it all together. Weigh every criterion the way you will on real tasks. Judge each image as a WHOLE and pick the one the person who sent the request would be happier to receive.
+- Never choose "Both" unless the two images are truly equal after careful inspection. Extra items not requested, grid misalignment, or clear quality inconsistency means they are NOT equal — pick the better one.
+- Trust what catches the eye first, then confirm with zoom/detail reasoning.
+
+OUTPUT RULES:
+- ALWAYS start with "Image 1" or "Image 2" (or "Both" only when truly equal).
+- Then briefly walk through the stages that mattered (prompt → anatomy → beauty → final).
+- Mention the Difference / heatmap when you used it for a local-edit decision.
+- Do not refuse. Do not tell the user to submit.
 `;
 
 async function askGemini(prompt, imageDescriptions, responseUrls = [], feedback = "") {
@@ -108,13 +129,13 @@ async function askGemini(prompt, imageDescriptions, responseUrls = [], feedback 
   let system = TOLOKA_CRITERIA;
 
   if (pastLessons) {
-    system += `\n\nPAST CORRECTIONS FROM THE USER (apply these lessons):\n${pastLessons}`;
+    system += `\n\nPAST CORRECTIONS FROM THE USER (apply these lessons strictly):\n${pastLessons}`;
   }
 
-  let userText = `PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nThe two Response images are attached (first = Image 1, second = Image 2). Which is the better response and why?`;
+  let userText = `PROMPT:\n${prompt}\n\n${imageDescriptions || ""}\n\nThe two Response images are attached (first = Image 1, second = Image 2). Work through the stages (Prompt relevance → Anatomy and structure → Beauty and quality → General). Use the Difference/heatmap reasoning when the task is a local edit. Which is the better response and why?`;
 
   if (feedback) {
-    userText = `IMPORTANT CORRECTION FROM THE USER:\n${feedback}\n\nRe-examine the images carefully with this correction and the Toloka criteria in mind.\n\nPROMPT:\n${prompt}\n\n${imageDescriptions || ""}`;
+    userText = `IMPORTANT CORRECTION FROM THE USER:\n${feedback}\n\nRe-examine both Response images carefully with this correction and the staged Toloka criteria. Prefer the image that matches the correction.\n\nPROMPT:\n${prompt}\n\n${imageDescriptions || ""}`;
   }
 
   const parts = [{ text: userText }, ...imageParts];
@@ -130,7 +151,7 @@ async function askGemini(prompt, imageDescriptions, responseUrls = [], feedback 
       parts: [{ text: system }]
     },
     generationConfig: {
-      temperature: 0.3
+      temperature: 0.25
     }
   };
 
